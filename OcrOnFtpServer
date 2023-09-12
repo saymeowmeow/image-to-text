@@ -1,0 +1,103 @@
+# combining tesseract and paddleOCR
+
+from flask import Flask, render_template, request, url_for, Response, flash
+from flask_restful import Api, Resource, reqparse
+# import pytesseract
+import cv2
+from paddleocr import PaddleOCR,draw_ocr
+from PIL import Image
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+from logging import FileHandler,WARNING
+import re
+from werkzeug.utils import secure_filename
+from ftplib import FTP
+import warnings
+# Initializing OCR, OCR will automatically download PP-OCRv3 detector, recognizer and angle classifier.
+ocr = PaddleOCR(use_angle_cls=True)
+warnings.filterwarnings("ignore")
+
+# pytesseract.pytesseract.tesseract_cmd = r'/usr/local/bin/tesseract'
+font = '/opt/crnumber/simfang.ttf'
+
+global ftp
+ftp=FTP('')
+ftp.login("","")
+
+def ocr_core(filename):
+    
+    try:
+        text1= ocr.ocr(filename)
+        length = len(text1[0])
+        for i in range(length):
+            matches = re.findall(r'\b[0-9]{15}\b', text1[0][i][1][0])
+            if matches!= []:
+                result=matches[0]
+                return result
+    except:
+        return "Image is not clear. Rescan the image"
+
+app=Flask(__name__, template_folder='templates')
+file_handler = FileHandler('errorlog.txt')
+file_handler.setLevel(WARNING)
+
+ALLOWED_EXTENSIONS = ['.jpg', '.jpeg']
+def allowed_file(filename):
+    file_ext = os.path.splitext(filename)[1]
+    lower_ext=file_ext.lower()
+    if lower_ext in ALLOWED_EXTENSIONS:
+        return True
+    else:
+        return False
+   
+
+path = "/var/ftp/uat_odisha/ftpserver/"
+UPLOAD_FOLDER = os.path.join(path, 'uploads/')
+
+if not os.path.isdir(UPLOAD_FOLDER):
+    os.mkdir(UPLOAD_FOLDER)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+@app.route('/', methods = ['GET', 'POST'])
+def upload_page():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return render_template('upload.html', msg = 'No file selected')
+        file = request.files['file']
+        if file.filename == '':
+            return render_template('upload.html', msg = 'No file')
+        if bool(allowed_file(file.filename))==False:
+            return render_template('upload.html',msg="Please upload a file in jpg or jpeg format only.")
+        if file and bool(allowed_file(file.filename))==True:
+            
+            filename = str(secure_filename(file.filename))
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'])+file.filename)
+            givenpath=os.path.join(app.config['UPLOAD_FOLDER'])+file.filename
+
+            extracted = ocr_core(givenpath)
+            
+
+            root_ext=os.path.splitext(file.filename)
+            file_new = '{}{}'.format(root_ext[0], root_ext[1])
+
+
+            source=UPLOAD_FOLDER+file_new
+            lower_root_ext=root_ext[1].lower()
+            destination=UPLOAD_FOLDER+extracted+lower_root_ext
+
+
+            if os.path.exists(destination):
+                os.remove(source)
+                return render_template('upload.html', msg=f"File with the CR number {extracted} already exists")
+
+            elif extracted.__eq__(renamed_string):
+                os.remove(source)
+                return render_template('upload.html', msg="Image is not clear. Please Rescan the image.")
+            else:
+                os.rename(source,destination)
+                return render_template('upload.html',extracted = extracted)
+    else:
+        return render_template('upload.html')
+if __name__ == '__main__':
+    app.run(host='',port='', debug=True)
